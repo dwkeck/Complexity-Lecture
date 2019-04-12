@@ -1,0 +1,207 @@
+---
+title: "Dancing Landscape V0.1"
+author: "Joseph Abolt"
+date: "April 6, 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Dancing Landscape
+
+* Landscape: term for any multidimensional surface used for optimization
+* Dancing Landscape: a landscape that moves over time
+
+### Sources of Dancing Landscapes
+
+* Complex behavior
+** When factors that create landscapes are interdependent
+** When factors that create landscapes change over time
+
+### Examples of Dancing Landscapes
+
+* The stock market
+* Customer demand by product tag over time
+
+## Demonstration
+``` {r}
+f2D <- function(x, t) {
+  return (cos(x) * sin(t * pi) - (abs(x)/10) + x/20)
+}
+
+plot(f2D(seq(-10, 10, 0.1), 0.00), type="l")
+plot(f2D(seq(-10, 10, 0.1), 0.17), type="l")
+plot(f2D(seq(-10, 10, 0.1), 0.33), type="l")
+plot(f2D(seq(-10, 10, 0.1), 0.50), type="l")
+plot(f2D(seq(-10, 10, 0.1), 0.67), type="l")
+plot(f2D(seq(-10, 10, 0.1), 0.83), type="l")
+plot(f2D(seq(-10, 10, 0.1), 1.00), type="l")
+plot(f2D(seq(-10, 10, 0.1), 1.17), type="l")
+plot(f2D(seq(-10, 10, 0.1), 1.33), type="l")
+```
+
+## Load Libraries
+```{r}
+# install.packages("gganimate")
+# install.packages("gifski")
+# install.packages("png")
+# install.packages("transformr")
+library("ggplot2")
+library("gganimate")
+library("gifski")
+library("png")
+library("transformr")
+```
+### GGPlot reference
+https://ggplot2.tidyverse.org/reference/index.html
+
+
+## Assemble Sample dataframe
+```{r}
+interval = 0.2 #Seems to be unbounded
+min = -10
+max = 10
+timeInterval = 0.105 #Possibly timeLimit / timeInterval bounded at 100?
+timeLimit = 5
+
+sequence = seq(min, max, interval)
+timeSequence = seq(0, timeLimit, timeInterval)
+observations = length(sequence)
+
+# Assemble rows with an (x, y) pair, and the time that point was reached at
+timeData <- data.frame(X=0, Y=0, Time=0)
+i = 1
+for (t in timeSequence)
+{
+  for (x in sequence)
+  {
+    timeData[i,]$X = x
+    timeData[i,]$Y = f2D(x, t)
+    timeData[i,]$Time = t
+    i = i + 1
+  }
+}
+
+## Add the points we want to graph - the output of our optimization function
+timeData$OptimalX <- timeData$Time
+timeData$OptimalY <- rep(0, length(timeData$X))
+
+## Output the dataframe and the graph it represents
+str(timeData)
+ggplot(timeData, aes(X, Y, group=Time)) +
+  geom_path()
+```
+
+## Animation of function over time
+```{r}
+visualizeFunction <- function(dataframe)
+{
+  ggplot(dataframe, aes(X, Y, group=Time)) +
+    geom_path() +
+    geom_point(x=dataframe$OptimalX, y=dataframe$OptimalY, colour="hotpink", size=4) +
+    transition_states(Time, transition_length=1, state_length=1, wrap=F) +
+    labs(title = "Time: {closest_state}") +
+    enter_fade() + 
+    exit_fade()
+}
+
+visualizeFunction(timeData)
+
+# ggplot(timeData, aes(X, Y, group=Time)) +
+#     geom_path() +
+#     transition_states(Time, transition_length=1, state_length=1, wrap=F) +
+#     geom_point(x=timeData$OptimalX, y=timeData$OptimalY, colour="hotpink", size=4) +
+#     labs(title = "Time: {closest_state}") +
+#     enter_fade() + 
+#     exit_fade()
+```
+
+## Setup Simulated Annealing
+The function updates the OptimalX and OptimalY columns of a dataframe containing X, Y, and Time to include the best results from simulated annealing optimization function. It attempts to find the maxima.
+
+ticksPerUnitTime controls how fast the simulated annealing runs compared to the function. For every increase in the time value of 1.0, the simulated annealing will update its value approximately ticksPerUnitTime times (possibly 1 less, due to rounding).
+
+At time=0, will always use a single random guess. That is, do not expect the first value to be a good one.
+
+costFunction is the function being optimized, of the form y = costFunction(x, time)
+
+Additional parameters should be self-explanatory with a basic understanding of simulated annealing.
+```{r}
+simulatedAnnealing <- function(timeDataFrame, ticksPerUnitTime, costFunction, startX = NULL)
+{
+  # Setup variables
+  currentTime = min(timeDataFrame$Time)
+  currentTick = 1
+  currentSubset = timeDataFrame[timeDataFrame$Time == currentTime,]
+  bestX = startX
+  if (is.null(bestX))
+  {
+    bestX = runif(1, min(currentSubset$X), max(currentSubset$X))
+  }
+  bestY = costFunction(bestX, currentTime)
+
+  # Record optimal x and y
+  timeDataFrame[timeDataFrame$Time == currentTime,]$OptimalX = rep(bestX, nrow(currentSubset))
+  timeDataFrame[timeDataFrame$Time == currentTime,]$OptimalY = rep(bestY, nrow(currentSubset))
+
+  # Iterate through time
+  nextSubset = timeDataFrame[timeDataFrame$Time > currentTime,]
+  while (nrow(nextSubset) > 0)
+  {
+    # Calculate number of simulated annealing ticks to do
+    nextTime = min(nextSubset$Time)
+    iterations = floor(nextTime * ticksPerUnitTime) - currentTick
+    
+    # Update variables
+    currentTime = nextTime
+    currentSubset = timeDataFrame[timeDataFrame$Time == currentTime,]
+    getOption <- function() { 
+      return (runif(1, 
+                    max(bestX - 1, min(currentSubset$X)), 
+                    min(bestX + 1, max(currentSubset$X))))
+    }
+    bestY = costFunction(bestX, currentTime)
+
+    # Simulate annealing
+    if (iterations >= 1)
+    for (i in 1:iterations)
+    {
+      currentTick = currentTick + 1
+      testX = getOption()
+      testY = costFunction(testX, currentTime)
+      if (testY > bestY)
+      {
+        bestX = testX
+        bestY = testY
+      }
+    }
+    
+    # Record new optimal x and y
+    timeDataFrame$OptimalX[timeDataFrame$Time == currentTime] = rep(bestX, nrow(currentSubset))
+    timeDataFrame$OptimalY[timeDataFrame$Time == currentTime] = rep(bestY, nrow(currentSubset))
+    
+    # Load next time subset
+    nextSubset = timeDataFrame[timeDataFrame$Time > currentTime,]
+  }
+  
+  return (timeDataFrame)
+}
+```
+
+## Run and Visualize Simulated Annealing
+```{r}
+# Approximately 1 guess per tick
+timeData = simulatedAnnealing(timeData, 9, f2D, startX = -10)
+visualizeFunction(timeData)
+
+# Approximately 3 guesses per tick
+timeData = simulatedAnnealing(timeData, 28, f2D, startX = -10)
+visualizeFunction(timeData)
+
+# Approximately 3 ticks per guess
+timeData = simulatedAnnealing(timeData, 3, f2D, startX = -10)
+visualizeFunction(timeData)
+```
+
