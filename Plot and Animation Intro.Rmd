@@ -47,5 +47,33 @@ ggplot(data = irisData, aes(x=Sepal.Length, y=Sepal.Width)) +
 
 ggplot(data = irisData, aes(x=Sepal.Length, y=Petal.Length)) + 
   geom_point()
+
+# Add extra aesthetic to color points correctly - will only apply to the scatterplot
+ggplot(data = irisData, aes(x=Sepal.Length, y=Petal.Length)) + 
+  geom_point(aes(colour = Species))
+
+# Display overlap by increasing size and decreasing alpha
+# Note: alpha is not an aesthetic
+ggplot(data = irisData, aes(x=Sepal.Length, y=Petal.Length)) + 
+  geom_point(aes(size = 4), alpha = 1 / 4)
+```
+
+## GGPlot Countours
+```{r}
+ggplot(faithfuld, aes(waiting, eruptions, z = density)) +
+  geom_contour()
+
+# Control number of contours
+ggplot(faithfuld, aes(waiting, eruptions, z = density)) +
+  geom_contour(bins = 3)
+
+# Fancy coloring 1
+ggplot(faithfuld, aes(waiting, eruptions, z = density)) +
+  geom_contour(aes(colour = stat(level)))
+
+# Fancy coloring 2
+ggplot(faithfuld, aes(waiting, eruptions, z = density)) +
+  geom_raster(aes(fill = density)) +
+  geom_contour(colour = "white")
 ```
 
