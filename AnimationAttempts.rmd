@@ -9,6 +9,20 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
+## Load Libraries
+```{r}
+# install.packages("ggplot2")
+# install.packages("gganimate")
+# install.packages("gifski")
+# install.packages("png")
+# install.packages("transformr")
+library("ggplot2")
+library("gganimate")
+library("gifski")
+library("png")
+library("transformr")
+```
+
 ## Dancing Landscape
 
 * Landscape: term for any multidimensional surface used for optimization
@@ -42,19 +56,6 @@ plot(f2D(seq(-10, 10, 0.1), 1.17), type="l")
 plot(f2D(seq(-10, 10, 0.1), 1.33), type="l")
 ```
 
-## Load Libraries
-```{r}
-# install.packages("ggplot2")
-# install.packages("gganimate")
-# install.packages("gifski")
-# install.packages("png")
-# install.packages("transformr")
-library("ggplot2")
-library("gganimate")
-library("gifski")
-library("png")
-library("transformr")
-```
 ### GGPlot reference
 https://ggplot2.tidyverse.org/reference/index.html
 
@@ -84,10 +85,6 @@ constructData2D <- function (func, xMin, xMax, precision, timeMin, timeMax)
 
 timeData = constructData2D(f2D, -10, 10, 0.2, 0, 5)
 
-## Add the points we want to graph - the output of our optimization function
-timeData$OptimalX <- timeData$Time
-timeData$OptimalY <- rep(0, length(timeData$X))
-
 ## Output the dataframe and the graph it represents
 str(timeData)
 ggplot(timeData, aes(X, Y, group=Time)) +
@@ -98,13 +95,25 @@ ggplot(timeData, aes(X, Y, group=Time)) +
 ```{r}
 visualizeFunction <- function(dataframe)
 {
-  ggplot(dataframe, aes(X, Y, group=Time)) +
-    geom_path() +
-    geom_point(x=dataframe$OptimalX, y=dataframe$OptimalY, colour="hotpink", size=4) +
-    transition_states(Time, transition_length=1, state_length=1, wrap=F) +
-    labs(title = "Time: {closest_state}") +
-    enter_fade() + 
-    exit_fade()
+  if (is.null(dataframe$OptimalX))
+  {
+    ggplot(dataframe, aes(X, Y, group=Time)) +
+      geom_path() +
+      transition_states(Time, transition_length=1, state_length=1, wrap=F) +
+      labs(title = "Time: {closest_state}") +
+      enter_fade() + 
+      exit_fade()
+  }
+  else
+  {
+    ggplot(dataframe, aes(X, Y, group=Time)) +
+      geom_path() +
+      geom_point(x=dataframe$OptimalX, y=dataframe$OptimalY, colour="hotpink", size=4) +
+      transition_states(Time, transition_length=1, state_length=1, wrap=F) +
+      labs(title = "Time: {closest_state}") +
+      enter_fade() + 
+      exit_fade()
+  }
 }
 
 visualizeFunction(timeData)
