@@ -44,6 +44,7 @@ plot(f2D(seq(-10, 10, 0.1), 1.33), type="l")
 
 ## Load Libraries
 ```{r}
+# install.packages("ggplot2")
 # install.packages("gganimate")
 # install.packages("gifski")
 # install.packages("png")
@@ -63,7 +64,7 @@ https://ggplot2.tidyverse.org/reference/index.html
 interval = 0.2 #Seems to be unbounded
 min = -10
 max = 10
-timeInterval = 0.105 #Possibly timeLimit / timeInterval bounded at 100?
+timeInterval = 0.101 #Possibly timeLimit / timeInterval bounded at 50.
 timeLimit = 5
 
 sequence = seq(min, max, interval)
@@ -108,28 +109,20 @@ visualizeFunction <- function(dataframe)
 }
 
 visualizeFunction(timeData)
-
-# ggplot(timeData, aes(X, Y, group=Time)) +
-#     geom_path() +
-#     transition_states(Time, transition_length=1, state_length=1, wrap=F) +
-#     geom_point(x=timeData$OptimalX, y=timeData$OptimalY, colour="hotpink", size=4) +
-#     labs(title = "Time: {closest_state}") +
-#     enter_fade() + 
-#     exit_fade()
 ```
 
 ## Setup Simulated Annealing
-The function updates the OptimalX and OptimalY columns of a dataframe containing X, Y, and Time to include the best results from simulated annealing optimization function. It attempts to find the maxima.
+The function updates the OptimalX and OptimalY columns of a dataframe containing X, Y, and Time to include the best results from hill climbing optimization function. It attempts to find the maxima.
 
-ticksPerUnitTime controls how fast the simulated annealing runs compared to the function. For every increase in the time value of 1.0, the simulated annealing will update its value approximately ticksPerUnitTime times (possibly 1 less, due to rounding).
+ticksPerUnitTime controls how fast the hill climbing runs compared to the function. For every increase in the time value of 1.0, the hill climbing will update its value ticksPerUnitTime times.
 
-At time=0, will always use a single random guess. That is, do not expect the first value to be a good one.
+costFunction is the function being optimized, of the form y = costFunction(x, time).
 
-costFunction is the function being optimized, of the form y = costFunction(x, time)
+At time = 0, the algorithm will use a single random guess. That is, do not expect the first value to be a good one. Setting startX can control this instead of a random value.
 
-Additional parameters should be self-explanatory with a basic understanding of simulated annealing.
+windowSize controls how far the hill climb algorithm can guess for each guess. It will look up to (windowSize / 2) left or right from its current best
 ```{r}
-simulatedAnnealing <- function(timeDataFrame, ticksPerUnitTime, costFunction, startX = NULL)
+hillClimb <- function(timeDataFrame, ticksPerUnitTime, costFunction, startX = NULL, windowSize = 1)
 {
   # Setup variables
   currentTime = min(timeDataFrame$Time)
@@ -141,6 +134,7 @@ simulatedAnnealing <- function(timeDataFrame, ticksPerUnitTime, costFunction, st
     bestX = runif(1, min(currentSubset$X), max(currentSubset$X))
   }
   bestY = costFunction(bestX, currentTime)
+  width = windowSize / 2
 
   # Record optimal x and y
   timeDataFrame[timeDataFrame$Time == currentTime,]$OptimalX = rep(bestX, nrow(currentSubset))
@@ -150,7 +144,7 @@ simulatedAnnealing <- function(timeDataFrame, ticksPerUnitTime, costFunction, st
   nextSubset = timeDataFrame[timeDataFrame$Time > currentTime,]
   while (nrow(nextSubset) > 0)
   {
-    # Calculate number of simulated annealing ticks to do
+    # Calculate number of hill climb ticks (guesses) to do
     nextTime = min(nextSubset$Time)
     iterations = floor(nextTime * ticksPerUnitTime) - currentTick
     
@@ -159,12 +153,12 @@ simulatedAnnealing <- function(timeDataFrame, ticksPerUnitTime, costFunction, st
     currentSubset = timeDataFrame[timeDataFrame$Time == currentTime,]
     getOption <- function() { 
       return (runif(1, 
-                    max(bestX - 1, min(currentSubset$X)), 
-                    min(bestX + 1, max(currentSubset$X))))
+                    max(bestX - width, min(currentSubset$X)), 
+                    min(bestX + width, max(currentSubset$X))))
     }
     bestY = costFunction(bestX, currentTime)
 
-    # Simulate annealing
+    # Actually do hill climbing
     if (iterations >= 1)
     for (i in 1:iterations)
     {
@@ -193,15 +187,15 @@ simulatedAnnealing <- function(timeDataFrame, ticksPerUnitTime, costFunction, st
 ## Run and Visualize Simulated Annealing
 ```{r}
 # Approximately 1 guess per tick
-timeData = simulatedAnnealing(timeData, 9, f2D, startX = -10)
+timeData = hillClimb(timeData, 9, f2D, startX = -10)
 visualizeFunction(timeData)
 
 # Approximately 3 guesses per tick
-timeData = simulatedAnnealing(timeData, 28, f2D, startX = -10)
+timeData = hillClimb(timeData, 28, f2D, startX = -10)
 visualizeFunction(timeData)
 
 # Approximately 3 ticks per guess
-timeData = simulatedAnnealing(timeData, 3, f2D, startX = -10)
+timeData = hillClimb(timeData, 3, f2D, startX = -10)
 visualizeFunction(timeData)
 ```
 
