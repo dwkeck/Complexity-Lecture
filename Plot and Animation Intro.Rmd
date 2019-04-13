@@ -1,0 +1,51 @@
+---
+title: "Plotting and Animation Intro"
+author: "Joseph Abolt"
+date: "April 13, 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Load Libraries
+```{r}
+# install.packages('knitr', repos = c('http://rforge.net', 'http://cran.rstudio.org'), type = 'source')
+# install.packages("ggplot2")
+# install.packages("gganimate")
+# install.packages("gifski")
+# install.packages("png")
+# install.packages("transformr")
+library("knitr")
+library("ggplot2")
+library("gganimate")
+library("gifski")
+library("png")
+library("transformr")
+```
+
+### GGPlot reference
+https://ggplot2.tidyverse.org/reference/index.html
+
+### GGAnimate reference
+https://www.rdocumentation.org/packages/gganimate/versions/1.0.2
+
+## Core Concepts
+* ggplot accepts all the inputs (each layer can override as necessary)
+* inputs given as "aesthetics" via the function aes()
+    * usually inherited; to override, set inherit.aes = F
+* add prototypes to apply visualizations to the data
+    * e.g., geom_point() creates scatterplots
+
+## GGPlot Scatterplot
+```{r}
+irisData <- iris
+ggplot(data = irisData, aes(x=Sepal.Length, y=Sepal.Width)) + 
+  geom_point()
+
+
+ggplot(data = irisData, aes(x=Sepal.Length, y=Petal.Length)) + 
+  geom_point()
+```
+
