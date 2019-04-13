@@ -61,29 +61,28 @@ https://ggplot2.tidyverse.org/reference/index.html
 
 ## Assemble Sample dataframe
 ```{r}
-interval = 0.2 #Seems to be unbounded
-min = -10
-max = 10
-timeInterval = 0.101 #Possibly timeLimit / timeInterval bounded at 50.
-timeLimit = 5
-
-sequence = seq(min, max, interval)
-timeSequence = seq(0, timeLimit, timeInterval)
-observations = length(sequence)
-
-# Assemble rows with an (x, y) pair, and the time that point was reached at
-timeData <- data.frame(X=0, Y=0, Time=0)
-i = 1
-for (t in timeSequence)
+constructData2D <- function (func, xMin, xMax, precision, timeMin, timeMax)
 {
-  for (x in sequence)
+  # Interval is bounded by gganimate - this just works, do not ask questions
+  timeInterval = ((timeMax - timeMin) / 50) + 0.001
+  
+  data <- data.frame(X=0, Y=0, Time=0)
+  i = 1
+  for (t in seq(timeMin, timeMax, timeInterval))
   {
-    timeData[i,]$X = x
-    timeData[i,]$Y = f2D(x, t)
-    timeData[i,]$Time = t
-    i = i + 1
+    for (x in seq(xMin, xMax, precision))
+    {
+      data[i,]$X = x
+      data[i,]$Y = func(x, t)
+      data[i,]$Time = t
+      i = i + 1
+    }
   }
+  
+  return (data)
 }
+
+timeData = constructData2D(f2D, -10, 10, 0.2, 0, 5)
 
 ## Add the points we want to graph - the output of our optimization function
 timeData$OptimalX <- timeData$Time
