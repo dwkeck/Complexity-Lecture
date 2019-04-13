@@ -11,11 +11,13 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ## Load Libraries
 ```{r}
+# install.packages('knitr', repos = c('http://rforge.net', 'http://cran.rstudio.org'), type = 'source')
 # install.packages("ggplot2")
 # install.packages("gganimate")
 # install.packages("gifski")
 # install.packages("png")
 # install.packages("transformr")
+library("knitr")
 library("ggplot2")
 library("gganimate")
 library("gifski")
@@ -45,6 +47,7 @@ f2D <- function(x, t) {
   return (cos(x) * sin(t * pi) - (abs(x)/10) + x/20)
 }
 
+par(mfrow=c(3, 3))
 plot(f2D(seq(-10, 10, 0.1), 0.00), type="l")
 plot(f2D(seq(-10, 10, 0.1), 0.17), type="l")
 plot(f2D(seq(-10, 10, 0.1), 0.33), type="l")
@@ -54,6 +57,7 @@ plot(f2D(seq(-10, 10, 0.1), 0.83), type="l")
 plot(f2D(seq(-10, 10, 0.1), 1.00), type="l")
 plot(f2D(seq(-10, 10, 0.1), 1.17), type="l")
 plot(f2D(seq(-10, 10, 0.1), 1.33), type="l")
+par(mfrow=c(1, 1))
 ```
 
 ### GGPlot reference
@@ -119,7 +123,7 @@ visualizeFunction <- function(dataframe)
 visualizeFunction(timeData)
 ```
 
-## Setup Simulated Annealing
+## Setup Hill Climbing
 The function updates the OptimalX and OptimalY columns of a dataframe containing X, Y, and Time to include the best results from hill climbing optimization function. It attempts to find the maxima.
 
 ticksPerUnitTime controls how fast the hill climbing runs compared to the function. For every increase in the time value of 1.0, the hill climbing will update its value ticksPerUnitTime times.
@@ -192,7 +196,7 @@ hillClimb <- function(timeDataFrame, ticksPerUnitTime, costFunction, startX = NU
 }
 ```
 
-## Run and Visualize Simulated Annealing
+## Run and Visualize Hill Climbing
 ```{r}
 # Approximately 1 guess per tick
 timeData = hillClimb(timeData, 9, f2D, startX = -10)
@@ -202,7 +206,7 @@ visualizeFunction(timeData)
 timeData = hillClimb(timeData, 28, f2D, startX = -10)
 visualizeFunction(timeData)
 
-# Approximately 3 ticks per guess
+# Approximately 0.3 guesses per tick
 timeData = hillClimb(timeData, 3, f2D, startX = -10)
 visualizeFunction(timeData)
 ```
