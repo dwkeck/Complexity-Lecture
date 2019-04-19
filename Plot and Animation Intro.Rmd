@@ -30,6 +30,7 @@ https://ggplot2.tidyverse.org/reference/index.html
 
 ### GGAnimate reference
 https://www.rdocumentation.org/packages/gganimate/versions/1.0.2
+Possibly superior: https://gganimate.com/reference/index.html
 
 ## Core Concepts
 * ggplot accepts all the inputs (each layer can override as necessary)
@@ -58,6 +59,39 @@ ggplot(data = irisData, aes(x=Sepal.Length, y=Petal.Length)) +
   geom_point(aes(size = 4), alpha = 1 / 4)
 ```
 
+## GGPlot Lines
+```{r}
+# Construct data and randomize order
+data <- data.frame(X = seq(0, 3, 0.25), Y = seq(0, 3, 0.25)^2)
+data <- data[sample(nrow(data), nrow(data)),]
+
+# geom_line() plots in ascending order along the x-axis
+ggplot(data, aes(X, Y)) +
+  geom_line()
+
+# geom_path() uses the order of the data
+# color can be used to distinguish earlier and later values
+ggplot(data, aes(X, Y)) +
+  geom_path(aes(colour = X))
+
+# geom_step() can emphasize precisely when data changed
+ggplot(data, aes(X, Y)) +
+  geom_step()
+
+# New data - square roots
+sequence <- seq(0, 3, 0.1)
+data <- data.frame(X = c(rev(sequence), sequence), Y = c(-1 * sqrt(rev(sequence)), sqrt(sequence)))
+
+# Since geom_path() does not order the data, it can plot non-functions like sqrt
+ggplot(data, aes(X, Y)) +
+  geom_path()
+
+# geom_line(), on the other hand, will be unhelpfully creative
+ggplot(data, aes(X, Y)) +
+  geom_line()
+```
+
+
 ## GGPlot Countours
 ```{r}
 ggplot(faithfuld, aes(waiting, eruptions, z = density)) +
@@ -75,5 +109,71 @@ ggplot(faithfuld, aes(waiting, eruptions, z = density)) +
 ggplot(faithfuld, aes(waiting, eruptions, z = density)) +
   geom_raster(aes(fill = density)) +
   geom_contour(colour = "white")
+```
+
+## The Group Aesthetic
+ * Single most confusing concept in ggplot
+ * Provide another variable used to group your data
+ * Simple once you have it, but can be difficult to wrangle
+ 
+Examples will be shown below with GGAnimate. When only drawing one graph, it is almost always better to use color, shape (for points), linetype (for line graphs), or facets (a way to create multiple graphs side-by-side; check the documentation for this) instead. This is because group does not change the styling between groups - they will appear nigh-indistinguishable.
+
+
+# GGAnimate
+GGAnimate is a package that creates a large number of ggplot images and combines them into a gif.
+It is used almost identically to ggplot.
+
+Unlike ggplot, gganimate is significantly less standardized in its parameters.
+Make sure you check the documentation to find the most appropriate tool.
+
+### GGAnimate reference
+https://www.rdocumentation.org/packages/gganimate/versions/1.0.2
+Possibly superior: https://gganimate.com/reference/index.html
+
+```{r}
+# The square root function
+sequence <- seq(0, 3, 0.1)
+data <- data.frame(X = c(rev(sequence), sequence), Y = c(-1 * sqrt(rev(sequence)), sqrt(sequence)))
+
+# An ordinary plot
+ggplot(data, aes(X, Y)) +
+  geom_path()
+
+# An animated plot
+ggplot(data, aes(X, Y)) +
+  geom_path() + 
+  transition_reveal(X)
+
+# Note: when knitting, only one animation per chunk
+```
+
+```{r}
+# Adding different transitions and changing their parameters changes how the function is animated
+
+# transition_reveal() takes a single paramter determining which values are being revealed
+# The above was left to right; this will be bottom to top
+ggplot(data, aes(X, Y)) +
+  geom_path() + 
+  transition_reveal(Y)
+```
+
+## Temperature by Month
+An example by Thomas Lin Penderson
+Source: https://github.com/thomasp85/gganimate/wiki/Temperature-time-series
+Comments added by myself
+```{r}
+airq <- airquality
+airq$Month <- format(ISOdate(2004,1:12,1),"%B")[airq$Month]
+
+ggplot(airq, aes(Day, Temp, group = Month)) + 
+  geom_line() + # Draw the line of temperature over time
+  geom_segment(aes(xend = 31, yend = Temp), linetype = 2, colour = 'grey') + # Connect line to month label at right
+  geom_point(size = 2) + # Draw point at end of line
+  geom_text(aes(x = 31.1, label = Month), hjust = 0) + # Moving month label at right
+  transition_reveal(Day) + # Create the animation, day-by-day
+  coord_cartesian(clip = 'off') + # Not sure - styling of some sort
+  labs(title = 'Temperature in New York', y = 'Temperature (°F)') + # Add labels
+  theme_minimal() + # Alter styling
+  theme(plot.margin = margin(5.5, 40, 5.5, 5.5)) # Alter styling
 ```
 
