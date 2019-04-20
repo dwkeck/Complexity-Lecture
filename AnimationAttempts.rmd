@@ -211,3 +211,196 @@ timeData = hillClimb(timeData, 3, f2D, startX = -10)
 visualizeFunction(timeData)
 ```
 
+## Takeaways
+ * Optimization is "easy" when optimzer speed > function change
+ * Optimization is difficult when optimizer speed < function change
+ 
+ 
+# NetLogo in R
+This next section sets up an agent-based model that exhibits complexity. We will use it to for the following workshop, where you will attempt to optimize over the output from the model.
+
+The model is a square grid of cells, wrapping on both axes, with one agent per cell. Each agent has a value that it can adjust up or down. An agent wants to have a higher value than three of its neighbors, but does not want to be the highest. Agents will:
+ * Subtract 3 if they are the highest
+ * Add 1 if they are below average
+ * Add 1 if they are above average and not the second-highest
+
+### Setup Utility Functions
+```{r}
+# From https://stackoverflow.com/questions/2453326/fastest-way-to-find-second-third-highest-lowest-value-in-vector-or-column
+maxN <- function(x, N=2){
+  len <- length(x)
+  if(N>len){
+    warning('N greater than length(x).  Setting N=length(x)')
+    N <- length(x)
+  }
+  sort(x,partial=len-N+1)[len-N+1]
+}
+# End sourced code
+
+getAgentChange <- function(agentValue, neighborValues)
+{
+  neighborValues = c(neighborValues, agentValue)
+  if (agentValue >= max(neighborValues))
+    return (-3)
+  if (agentValue < mean(neighborValues))
+    return (1)
+  if (agentValue >= mean(neighborValues) && agentValue < maxN(neighborValues, 2))
+    return (1)
+  return (0)
+}
+```
+
+### Setup grid
+```{r}
+buildWorld <- function(height, width, startingValues = NULL)
+{
+  if (is.null(startingValues))
+  {
+    startingValues = rep(100, height * width)
+  }
+  densityValue = 1 / (height * width)
+  sumStartValues = sum(startingValues)
+  world <- data.frame(X=0, Y=0, Value=startingValues[1], Density = densityValue)
+  i = 1
+  for (x in 1:width)
+  {
+    for (y in 1:height)
+    {
+      world[i,]$X = x
+      world[i,]$Y = y
+      world[i,]$Value = startingValues[i]
+      world[i,]$Density = startingValues[i] / sumStartValues
+      i = i + 1
+    }
+  }
+  
+  return (world)
+}
+
+world = buildWorld(17, 17, seq(100, 128.9, 0.1))
+
+ggplot(world, aes(X, Y, z = Density)) +
+  geom_raster(aes(fill = Density)) +
+  geom_contour(colour = "white")
+```
+
+### Setup Changing Values
+```{r}
+updateWorld <- function(world, updateFunction, orthogonalOnly = T)
+{
+  newWorld = buildWorld(max(world$X), max(world$Y))
+  for (x in 1:max(world$X))
+  {
+    xLower = x - 1
+    if (xLower == 0) xLower = max(world$X)
+    xUpper = x + 1
+    if (xUpper == max(world$X)) xUpper = 1
+    
+    for (y in 1:max(world$Y))
+    {
+      yLower = y - 1
+      if (yLower == 0) yLower = max(world$Y)
+      yUpper = y + 1
+      if (yUpper == max(world$Y)) yUpper = 1
+      
+      neighborValues = c()
+      neighborValues = c(neighborValues, world[world$X == xUpper & world$Y == y,]$Value)
+      neighborValues = c(neighborValues, world[world$X == xLower & world$Y == y,]$Value)
+      neighborValues = c(neighborValues, world[world$X == x & world$Y == yUpper,]$Value)
+      neighborValues = c(neighborValues, world[world$X == x & world$Y == yLower,]$Value)
+
+      
+      if (!orthogonalOnly)
+      {
+        neighborValues = c(neighborValues, world[world$X == xUpper & world$Y == yUpper,]$Value)
+        neighborValues = c(neighborValues, world[world$X == xUpper & world$Y == yLower,]$Value)
+        neighborValues = c(neighborValues, world[world$X == xLower & world$Y == yUpper,]$Value)
+        neighborValues = c(neighborValues, world[world$X == xLower & world$Y == yLower,]$Value)
+      }
+
+      currentValue = world[newWorld$X == x & newWorld$Y == y,]$Value
+      newWorld[newWorld$X == x & newWorld$Y == y,]$Value = currentValue + updateFunction(currentValue, neighborValues)
+    }
+  }
+  
+  newWorld$Density = newWorld$Value / sum(newWorld$Value)
+  
+  return (newWorld)
+}
+
+world2 = updateWorld(world, getAgentChange)
+ggplot(world2, aes(X, Y, z = Density)) +
+  geom_raster(aes(fill = Density)) +
+  geom_contour(colour = "white")
+```
+
+### Construct time data
+```{r}
+lastStep = buildWorld(17, 17, seq(100, 128.9, 0.1))
+lastStep$Time = rep(1, nrow(lastStep))
+finalData = NULL
+
+recordSteps = 25
+totalSteps = 50
+startRecording = totalSteps - recordSteps
+addOptimalPoints = T
+
+for (t in 2:totalSteps)
+{
+  newData = updateWorld(lastStep, getAgentChange)
+  newData$Time = rep(t, nrow(newData))
+  if (addOptimalPoints)
+  {
+    bestX = newData[newData$Value == max(newData$Value),]$X[1]
+    bestY = newData[newData$Value == max(newData$Value),]$Y[1]
+    newData$OptimalX = rep(bestX, nrow(newData))
+    newData$OptimalY = rep(bestY, nrow(newData))
+  }
+  lastStep = newData
+  
+  if (t > startRecording && t < startRecording + recordSteps)
+  {
+    if(is.null(finalData))
+      finalData = newData
+    else
+      finalData = rbind(finalData, newData)
+  }
+}
+```
+
+### Prepare animated visualizer
+```{r}
+visualizeFunction <- function(dataframe)
+{
+  if (is.null(dataframe$OptimalX))
+  {
+    ggplot(dataframe, aes(X, Y, z = Density)) +
+      geom_raster(aes(fill = Density)) +
+      geom_contour(colour = "white", bins=7) + 
+      transition_states(Time, transition_length = 10, state_length = 0, wrap=F) + 
+      labs(title = "Time: {closest_state}") + 
+      enter_fade() + 
+      exit_fade() + 
+      ease_aes("linear")
+  }
+  else
+  {
+    ggplot(dataframe, aes(X, Y, z = Density)) +
+      geom_raster(aes(fill = Density)) +
+      geom_contour(colour = "white", bins=7) + 
+      geom_point(x=dataframe$OptimalX, y=dataframe$OptimalY, colour="hotpink", size=4) +
+      transition_states(Time, transition_length = 10, state_length = 0, wrap=F) + 
+      labs(title = "Time: {closest_state}") + 
+      enter_fade() + 
+      exit_fade() + 
+      ease_aes("linear")
+  }
+}
+```
+
+### Visualize
+```{r}
+visualizeFunction(finalData)
+```
+
+
