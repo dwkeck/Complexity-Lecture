@@ -337,6 +337,7 @@ ggplot(world2, aes(X, Y, z = Density)) +
 
 ### Construct time data
 ```{r}
+# Assembles the base data - what elevation is each coordinate at for each time step
 buildTimeWorld <- function(width, height, iterations)
 {
   lastStep = buildWorld(width, height, seq(100, 100+(height * width * 0.1), 0.1))
@@ -356,6 +357,7 @@ buildTimeWorld <- function(width, height, iterations)
   return(totalData)
 }
 
+# Given a set of points over time, outputs the optimal point at each time step
 getOptimalData <- function(timeWorld)
 {
   optimalData = data.frame(OptimalX = 0, OptimalY = 0, Time = 0)
@@ -371,6 +373,8 @@ getOptimalData <- function(timeWorld)
   return (optimalData)
 }
 
+# Given a set of points over time and an optimization function, returns the optimization function's
+# guess of optimality for each time step
 getGuesses <- function(timeWorld, optimizeFunction, ticksPerTime = 1, ...)
 {
   guessData = data.frame(GuessedX = 0, GuessedY = 0, Time = 0)
@@ -391,6 +395,10 @@ getGuesses <- function(timeWorld, optimizeFunction, ticksPerTime = 1, ...)
   return (guessData)
 }
 
+# Horrible ugly monster function to encapsulate a bunch of work.
+# Builds a world (or reuses the one passed in a timeWorld). Uses that to obtain optimal points
+# (if includeOptimalPoints is true), as well as run an optimization function (if optimizeFunction is not
+# null). Returns an object with three dataframes (or NULLs) - worldData, optimalPoints, and guessedPoints.
 assembleData <- function (width = 17, height = 17, iterations = 50, timeWorld = NULL, optimizeFunction = NULL, ticksPerTime = 1, includeOptimalPoints = T, ...)
 {
   finalData <- list(worldData = NULL, optimalPoints = NULL, guessedPoints = NULL)
@@ -411,9 +419,16 @@ assembleData <- function (width = 17, height = 17, iterations = 50, timeWorld = 
   
   return (finalData)
 }
+```
 
+```{r}
+# Assembling a world only
 finalData = assembleData(17, 17, 50)
+
+# Save out the world for reuse
 timeWorld = finalData$worldData
+
+# See how much faster this is now?
 finalData = assembleData(timeWorld = timeWorld)
 ```
 
@@ -425,23 +440,35 @@ visualizeFunction <- function(allData, fromtime = 25, untiltime = 50)
   untiltime = max(min(untiltime, max(allData$worldData$Time)), min(allData$worldData$Time))
   
   worldData = allData$worldData[allData$worldData$Time >= fromtime & allData$worldData$Time <= untiltime,]
-  
-  animation = ggplot(allData$worldData, aes(X, Y, z = Density)) +
+
+  animation = ggplot(worldData, aes(X, Y, z = Density)) +
     geom_raster(aes(fill = Density)) +
-    geom_contour(colour = "white", bins = 7) +
-    transition_states(Time, transition_length = 10, state_length = 0, wrap=F) + 
-    labs(title = "Time: {closest_state}") + 
-    enter_fade() + 
-    exit_fade() + 
+    # geom_contour(colour = "white", bins = 3) +
+    transition_states(Time, transition_length = 10, state_length = 0, wrap=F) 
+    labs(title = "Time: {closest_state}") +
+    enter_fade() +
+    exit_fade() +
     ease_aes("linear")
   if (!is.null(allData$optimalPoints))
   {
     optData = allData$optimalPoints[allData$optimalPoints$Time >= fromtime & allData$optimalPoints$Time <= untiltime,]
+    lengthenFactor = nrow(worldData) / nrow(optData)
+    final = optData
+    for(i in 2:lengthenFactor) final = rbind(final, optData)
+    optData = final
+    optData = optData[with(optData, order(Time)), ]
+
     animation = animation + geom_point(x=optData$OptimalX, y=optData$OptimalY, colour="hotpink", size=4)
   }
   if (!is.null(allData$guessedPoints))
   {
     guessData = allData$guessedPoints[allData$guessedPoints$Time >= fromtime & allData$guessedPoints$Time <= untiltime,]
+    lengthenFactor = nrow(worldData) / nrow(guessData)
+    final = guessData
+    for(i in 2:lengthenFactor) final = rbind(final, guessData)
+    guessData = final
+    guessData = guessData[with(guessData, order(Time)), ]
+
     animation = animation + geom_point(x=guessData$GuessedX, y=guessData$GuessedY, colour="lawngreen", size=4)
   }
   animation
