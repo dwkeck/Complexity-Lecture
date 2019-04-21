@@ -220,6 +220,7 @@ visualizeFunction(timeData)
 This next section sets up an agent-based model that exhibits complexity. We will use it to for the following workshop, where you will attempt to optimize over the output from the model.
 
 The model is a square grid of cells, wrapping on both axes, with one agent per cell. Each agent has a value that it can adjust up or down. An agent wants to have a higher value than three of its neighbors, but does not want to be the highest. Agents will:
+
  * Subtract 3 if they are the highest
  * Add 1 if they are below average
  * Add 1 if they are above average and not the second-highest
@@ -294,14 +295,14 @@ updateWorld <- function(world, updateFunction, orthogonalOnly = T)
     xLower = x - 1
     if (xLower == 0) xLower = max(world$X)
     xUpper = x + 1
-    if (xUpper == max(world$X)) xUpper = 1
+    if (xUpper > max(world$X)) xUpper = 1
     
     for (y in 1:max(world$Y))
     {
       yLower = y - 1
       if (yLower == 0) yLower = max(world$Y)
       yUpper = y + 1
-      if (yUpper == max(world$Y)) yUpper = 1
+      if (yUpper > max(world$Y)) yUpper = 1
       
       neighborValues = c()
       neighborValues = c(neighborValues, world[world$X == xUpper & world$Y == y,]$Value)
@@ -336,71 +337,246 @@ ggplot(world2, aes(X, Y, z = Density)) +
 
 ### Construct time data
 ```{r}
-lastStep = buildWorld(17, 17, seq(100, 128.9, 0.1))
-lastStep$Time = rep(1, nrow(lastStep))
-finalData = NULL
-
-recordSteps = 25
-totalSteps = 50
-startRecording = totalSteps - recordSteps
-addOptimalPoints = T
-
-for (t in 2:totalSteps)
+assembleData <- function (width, height, optimizeFunction = NULL, ticksPerTime = 1, addOptimalPoints = T, ...)
 {
-  newData = updateWorld(lastStep, getAgentChange)
-  newData$Time = rep(t, nrow(newData))
-  if (addOptimalPoints)
-  {
-    bestX = newData[newData$Value == max(newData$Value),]$X[1]
-    bestY = newData[newData$Value == max(newData$Value),]$Y[1]
-    newData$OptimalX = rep(bestX, nrow(newData))
-    newData$OptimalY = rep(bestY, nrow(newData))
-  }
-  lastStep = newData
+  lastStep = buildWorld(width, height, seq(100, 100+(height * width * 0.1), 0.1))
+  lastStep$Time = rep(1, nrow(lastStep))
+  finalData = NULL
+  recordSteps = 25
+  totalSteps = 50
+  startRecording = totalSteps - recordSteps
+  xGuess = floor(width / 2)
+  yGuess = floor(height / 2)
   
-  if (t > startRecording && t < startRecording + recordSteps)
+  for (t in 2:totalSteps)
   {
-    if(is.null(finalData))
-      finalData = newData
-    else
-      finalData = rbind(finalData, newData)
+    newData = updateWorld(lastStep, getAgentChange)
+    newData$Time = rep(t, nrow(newData))
+    if (addOptimalPoints)
+    {
+      bestX = newData[newData$Value == max(newData$Value),]$X[1]
+      bestY = newData[newData$Value == max(newData$Value),]$Y[1]
+      newData$OptimalX = rep(bestX, nrow(newData))
+      newData$OptimalY = rep(bestY, nrow(newData))
+    }
+    if (!is.null(optimizeFunction))
+    {
+      guesses = optimizeFunction(newData, ticksPerTime, xGuess, yGuess, ...)
+      xGuess = guesses[1]
+      yGuess = guesses[2]
+      newData$GuessedX = rep(xGuess, nrow(newData))
+      newData$GuessedY = rep(yGuess, nrow(newData))
+    }
+    lastStep = newData
+    
+    if (t > startRecording && t < startRecording + recordSteps)
+    {
+      if(is.null(finalData))
+        finalData = newData
+      else
+        finalData = rbind(finalData, newData)
+    }
   }
+
+  return(finalData)
 }
+
+finalData = assembleData(17, 17)
 ```
 
 ### Prepare animated visualizer
 ```{r}
 visualizeFunction <- function(dataframe)
 {
-  if (is.null(dataframe$OptimalX))
+  animation = ggplot(dataframe, aes(X, Y, z = Density)) +
+    geom_raster(aes(fill = Density)) +
+    geom_contour(colour = "white", bins=7) + 
+    transition_states(Time, transition_length = 10, state_length = 0, wrap=F) + 
+    labs(title = "Time: {closest_state}") + 
+    enter_fade() + 
+    exit_fade() + 
+    ease_aes("linear")
+  if (!is.null(dataframe$OptimalX))
   {
-    ggplot(dataframe, aes(X, Y, z = Density)) +
-      geom_raster(aes(fill = Density)) +
-      geom_contour(colour = "white", bins=7) + 
-      transition_states(Time, transition_length = 10, state_length = 0, wrap=F) + 
-      labs(title = "Time: {closest_state}") + 
-      enter_fade() + 
-      exit_fade() + 
-      ease_aes("linear")
+    animation = animation + geom_point(x=dataframe$OptimalX, y=dataframe$OptimalY, colour="hotpink", size=4)
   }
-  else
+  if (!is.null(dataframe$GuessedX))
   {
-    ggplot(dataframe, aes(X, Y, z = Density)) +
-      geom_raster(aes(fill = Density)) +
-      geom_contour(colour = "white", bins=7) + 
-      geom_point(x=dataframe$OptimalX, y=dataframe$OptimalY, colour="hotpink", size=4) +
-      transition_states(Time, transition_length = 10, state_length = 0, wrap=F) + 
-      labs(title = "Time: {closest_state}") + 
-      enter_fade() + 
-      exit_fade() + 
-      ease_aes("linear")
+    animation = animation + geom_point(x=dataframe$GuessedX, y=dataframe$GuessedY, colour="lawngreen", size=4)
   }
+  animation
 }
 ```
 
 ### Visualize
 ```{r}
 visualizeFunction(finalData)
+```
+
+
+# Setup Optimization Library
+All functions have a standardized signature:
+
+ * currentData, being the data frame for the current moment in time. Contains X, Y, and Value.
+ * ticks, a measurement of how much work to do during this time interval. E.g., guesses made by simulated annealing, steps taken by hill climbing.
+ * startX, the starting X value for the current run
+ * startY, the starting Y value for the current run
+ * additional parameters may be specified, but these must be passed into assembleData() manually
+ 
+### Evaluation
+```{r}
+evaluate <- function (results)
+{
+  averageDistance = 0
+  for (t in min(results$Time):max(results$Time))
+  {
+    row = results[results$Time == t,][1,]
+    distance = sqrt((row$OptimalX - row$GuessedX) ^ 2 + (row$OptimalY - row$GuessedY) ^ 2)
+    averageDistance = averageDistance + distance
+  }
+  averageDistance = averageDistance / length(unique(results$Time))
+  return (averageDistance)
+}
+```
+
+### Hill Climbing
+```{r}
+hillClimb <- function(currentData, ticks, startX = 1, startY = 1)
+{
+  bestX = startX
+  bestY = startY
+  bestValue = currentData[currentData$X == bestX & currentData$Y == bestY,]$Value
+  for (i in 1:ticks)
+  {
+    xLower = bestX - 1
+    if (xLower == 0) xLower = max(currentData$X)
+    xUpper = bestX + 1
+    if (xUpper > max(currentData$X)) xUpper = 1
+    yLower = bestY - 1
+    if (yLower == 0) yLower = max(currentData$Y)
+    yUpper = bestY + 1
+    if (yUpper > max(currentData$Y)) yUpper = 1
+    
+    if (currentData[currentData$X == xLower & currentData$Y == bestY,]$Value > bestValue)
+    {
+      bestX = xLower
+      bestValue = currentData[currentData$X == xLower & currentData$Y == bestY,]$Value
+    }
+    
+    if (currentData[currentData$X == xUpper & currentData$Y == bestY,]$Value > bestValue)
+    {
+      bestX = xUpper
+      bestValue = currentData[currentData$X == xUpper & currentData$Y == bestY,]$Value
+    }
+    
+    if (currentData[currentData$X == bestX & currentData$Y == yUpper,]$Value > bestValue)
+    {
+      bestY = yUpper
+      bestValue = currentData[currentData$X == bestX & currentData$Y == yUpper,]$Value
+    }
+    
+    if (currentData[currentData$X == bestX & currentData$Y == yLower,]$Value > bestValue)
+    {
+      bestY = yLower
+      bestValue = currentData[currentData$X == bestX & currentData$Y == yLower,]$Value
+    }
+  }
+  
+  return (c(bestX, bestY))
+}
+```
+
+### Simulated Annealing
+Accepts two additional parameters:
+
+ * coolingFunction - function that returns a percent likelihood to swap to a worse position.
+ * temperatureTickAmount - each time the cooling function is called, its input increments by this amount. Determines how fast to slide along the cooling function.
+```{r}
+linearCoolingFunction <- function (x) { return(1 - 0.1 * x) }
+powerCoolingFunction <- function (x) { return(0.75 ^ x) }
+decayCoolingFunction <- function (x) { return(1 / (x + 1)) }
+
+simulatedAnnealing <- function(currentData, ticks, startX = 1, startY = 1, coolingFunction = NULL, temperatureTickAmount = NULL)
+{
+  if (is.null(coolingFunction))
+  {
+    stop("Simulated Annealing requires CoolingFunction!")
+  }
+  if (is.null(temperatureTickAmount))
+  {
+    stop("Simulated Annealing requires TemperatureTickAmount!")
+  }
+  
+  bestX = startX
+  bestY = startY
+  bestValue = currentData[currentData$X == bestX & currentData$Y == bestY,]$Value
+  currentCoolingValue = 0
+  for (i in 1:ticks)
+  {
+    xLower = bestX - 1
+    if (xLower == 0) xLower = max(currentData$X)
+    xUpper = bestX + 1
+    if (xUpper > max(currentData$X)) xUpper = 1
+    yLower = bestY - 1
+    if (yLower == 0) yLower = max(currentData$Y)
+    yUpper = bestY + 1
+    if (yUpper > max(currentData$Y)) yUpper = 1
+    
+    nextX = bestX
+    nextY = bestY
+    nextValue = 0
+    
+    if (currentData[currentData$X == xLower & currentData$Y == bestY,]$Value > nextValue)
+    {
+      nextX = xLower
+      nextValue = currentData[currentData$X == xLower & currentData$Y == bestY,]$Value
+    }
+    
+    if (currentData[currentData$X == xUpper & currentData$Y == bestY,]$Value > nextValue)
+    {
+      nextX = xUpper
+      nextValue = currentData[currentData$X == xUpper & currentData$Y == bestY,]$Value
+    }
+    
+    if (currentData[currentData$X == bestX & currentData$Y == yUpper,]$Value > nextValue)
+    {
+      nextY = yUpper
+      nextValue = currentData[currentData$X == bestX & currentData$Y == yUpper,]$Value
+    }
+    
+    if (currentData[currentData$X == bestX & currentData$Y == yLower,]$Value > nextValue)
+    {
+      nextY = yLower
+      nextValue = currentData[currentData$X == bestX & currentData$Y == yLower,]$Value
+    }
+    
+    # The part that makes this simulated annealing, not hill climbing
+    currentCoolingValue = currentCoolingValue + temperatureTickAmount
+    if ((nextValue < bestValue && runif(1) < coolingFunction(currentCoolingValue)) ||
+        nextValue > bestValue)
+    {
+      bestValue = nextValue
+      bestX = nextX
+      bestY = nextY
+    }
+  }
+  
+  return (c(bestX, bestY))
+}
+```
+
+
+### Workshop
+```{r}
+hillClimbOutput = assembleData(17, 17, hillClimb, ticksPerTime = 100)
+cat("Hill climbing was, on average, off by", evaluate(hillClimbOutput), "units.\n")
+visualizeFunction(hillClimbOutput)
+```
+
+```{r}
+saOutput = assembleData(17, 17, simulatedAnnealing, ticksPerTime = 10, coolingFunction = decayCoolingFunction, temperatureTickAmount = 0.75)
+cat("Simulated Annealing was, on average, off by", evaluate(saOutput), "units.\n")
+visualizeFunction(saOutput)
 ```
 
 
