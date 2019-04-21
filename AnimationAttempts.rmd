@@ -202,12 +202,12 @@ hillClimb <- function(timeDataFrame, ticksPerUnitTime, costFunction, startX = NU
 timeData = hillClimb(timeData, 9, f2D, startX = -10)
 visualizeFunction(timeData)
 
-# Approximately 3 guesses per tick
-timeData = hillClimb(timeData, 28, f2D, startX = -10)
-visualizeFunction(timeData)
-
 # Approximately 0.3 guesses per tick
 timeData = hillClimb(timeData, 3, f2D, startX = -10)
+visualizeFunction(timeData)
+
+# Approximately 3 guesses per tick
+timeData = hillClimb(timeData, 28, f2D, startX = -10)
 visualizeFunction(timeData)
 ```
 
