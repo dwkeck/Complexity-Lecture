@@ -337,72 +337,112 @@ ggplot(world2, aes(X, Y, z = Density)) +
 
 ### Construct time data
 ```{r}
-assembleData <- function (width, height, optimizeFunction = NULL, ticksPerTime = 1, addOptimalPoints = T, ...)
+buildTimeWorld <- function(width, height, iterations)
 {
   lastStep = buildWorld(width, height, seq(100, 100+(height * width * 0.1), 0.1))
   lastStep$Time = rep(1, nrow(lastStep))
-  finalData = NULL
-  recordSteps = 25
-  totalSteps = 50
-  startRecording = totalSteps - recordSteps
-  xGuess = floor(width / 2)
-  yGuess = floor(height / 2)
   
-  for (t in 2:totalSteps)
+  totalData = lastStep
+  
+  for (t in 2:iterations)
   {
     newData = updateWorld(lastStep, getAgentChange)
     newData$Time = rep(t, nrow(newData))
-    if (addOptimalPoints)
-    {
-      bestX = newData[newData$Value == max(newData$Value),]$X[1]
-      bestY = newData[newData$Value == max(newData$Value),]$Y[1]
-      newData$OptimalX = rep(bestX, nrow(newData))
-      newData$OptimalY = rep(bestY, nrow(newData))
-    }
-    if (!is.null(optimizeFunction))
-    {
-      guesses = optimizeFunction(newData, ticksPerTime, xGuess, yGuess, ...)
-      xGuess = guesses[1]
-      yGuess = guesses[2]
-      newData$GuessedX = rep(xGuess, nrow(newData))
-      newData$GuessedY = rep(yGuess, nrow(newData))
-    }
     lastStep = newData
     
-    if (t > startRecording && t < startRecording + recordSteps)
-    {
-      if(is.null(finalData))
-        finalData = newData
-      else
-        finalData = rbind(finalData, newData)
-    }
+    totalData = rbind(totalData, newData)
   }
 
-  return(finalData)
+  return(totalData)
 }
 
-finalData = assembleData(17, 17)
+getOptimalData <- function(timeWorld)
+{
+  optimalData = data.frame(OptimalX = 0, OptimalY = 0, Time = 0)
+  i = 1
+  for (t in min(timeWorld$Time):max(timeWorld$Time))
+  {
+    timeSubset = timeWorld[timeWorld$Time == t,]
+    optimalData[i,]$OptimalX = timeSubset[timeSubset$Value == max(timeSubset$Value),][1,]$X
+    optimalData[i,]$OptimalY = timeSubset[timeSubset$Value == max(timeSubset$Value),][1,]$Y
+    optimalData[i,]$Time = t
+    i = i + 1
+  }
+  return (optimalData)
+}
+
+getGuesses <- function(timeWorld, optimizeFunction, ticksPerTime = 1, ...)
+{
+  guessData = data.frame(GuessedX = 0, GuessedY = 0, Time = 0)
+  xGuess = floor(mean(timeWorld$X))
+  yGuess = floor(mean(timeWorld$Y))
+  i = 1
+  for (t in min(timeWorld$Time):max(timeWorld$Time))
+  {
+    timeSubset = timeWorld[timeWorld$Time == t,]
+    guesses = optimizeFunction(timeSubset, ticksPerTime, xGuess, yGuess, ...)
+    xGuess = guesses[1]
+    yGuess = guesses[2]
+    guessData[i,]$GuessedX = xGuess
+    guessData[i,]$GuessedY = yGuess
+    guessData[i,]$Time = t
+    i = i + 1
+  }
+  return (guessData)
+}
+
+assembleData <- function (width = 17, height = 17, iterations = 50, timeWorld = NULL, optimizeFunction = NULL, ticksPerTime = 1, includeOptimalPoints = T, ...)
+{
+  finalData <- list(worldData = NULL, optimalPoints = NULL, guessedPoints = NULL)
+  if (is.null(timeWorld))
+  {
+    finalData$worldData = buildTimeWorld(width, height, iterations)
+  } else {
+    finalData$worldData = timeWorld
+  }
+  if (!is.null(optimizeFunction))
+  {
+    finalData$guessedPoints = getGuesses(finalData$worldData, optimizeFunction, ticksPerTime, ...)
+  }
+  if (includeOptimalPoints)
+  {
+    finalData$optimalPoints = getOptimalData(finalData$worldData)
+  }
+  
+  return (finalData)
+}
+
+finalData = assembleData(17, 17, 50)
+timeWorld = finalData$worldData
+finalData = assembleData(timeWorld = timeWorld)
 ```
 
 ### Prepare animated visualizer
 ```{r}
-visualizeFunction <- function(dataframe)
+visualizeFunction <- function(allData, fromtime = 25, untiltime = 50)
 {
-  animation = ggplot(dataframe, aes(X, Y, z = Density)) +
+  fromtime = max(min(fromtime, max(allData$worldData$Time)), min(allData$worldData$Time))
+  untiltime = max(min(untiltime, max(allData$worldData$Time)), min(allData$worldData$Time))
+  
+  worldData = allData$worldData[allData$worldData$Time >= fromtime & allData$worldData$Time <= untiltime,]
+  
+  animation = ggplot(allData$worldData, aes(X, Y, z = Density)) +
     geom_raster(aes(fill = Density)) +
-    geom_contour(colour = "white", bins=7) + 
+    geom_contour(colour = "white", bins = 7) +
     transition_states(Time, transition_length = 10, state_length = 0, wrap=F) + 
     labs(title = "Time: {closest_state}") + 
     enter_fade() + 
     exit_fade() + 
     ease_aes("linear")
-  if (!is.null(dataframe$OptimalX))
+  if (!is.null(allData$optimalPoints))
   {
-    animation = animation + geom_point(x=dataframe$OptimalX, y=dataframe$OptimalY, colour="hotpink", size=4)
+    optData = allData$optimalPoints[allData$optimalPoints$Time >= fromtime & allData$optimalPoints$Time <= untiltime,]
+    animation = animation + geom_point(x=optData$OptimalX, y=optData$OptimalY, colour="hotpink", size=4)
   }
-  if (!is.null(dataframe$GuessedX))
+  if (!is.null(allData$guessedPoints))
   {
-    animation = animation + geom_point(x=dataframe$GuessedX, y=dataframe$GuessedY, colour="lawngreen", size=4)
+    guessData = allData$guessedPoints[allData$guessedPoints$Time >= fromtime & allData$guessedPoints$Time <= untiltime,]
+    animation = animation + geom_point(x=guessData$GuessedX, y=guessData$GuessedY, colour="lawngreen", size=4)
   }
   animation
 }
@@ -425,19 +465,41 @@ All functions have a standardized signature:
  
 ### Evaluation
 ```{r}
-evaluate <- function (results)
+evaluate <- function (allData, fromtime = 25, untiltime = 50)
 {
-  averageDistance = 0
-  for (t in min(results$Time):max(results$Time))
+  if (is.null(allData$optimalPoints) || is.null(allData$guessedPoints))
   {
-    row = results[results$Time == t,][1,]
-    distance = sqrt((row$OptimalX - row$GuessedX) ^ 2 + (row$OptimalY - row$GuessedY) ^ 2)
+    stop("Incomplete data for evaluate; allData is missing either optimalPoints or guessedPoints")
+  }
+  expected = allData$optimalPoints
+  actual = allData$guessedPoints
+  
+  fromtime = max(min(fromtime, max(expected$Time)), min(expected$Time))
+  untiltime = max(min(untiltime, max(expected$Time)), min(expected$Time))
+  
+  averageDistance = 0
+  for (t in fromtime:untiltime)
+  {
+    expectedCoords = expected[expected$Time == t,]
+    actualCoords = actual[actual$Time == t,]
+    distance = sqrt((expectedCoords$OptimalX - actualCoords$GuessedX) ^ 2 + (expectedCoords$OptimalY - actualCoords$GuessedY) ^ 2)
     averageDistance = averageDistance + distance
   }
-  averageDistance = averageDistance / length(unique(results$Time))
+  averageDistance = averageDistance / (untiltime - fromtime + 1)
   return (averageDistance)
 }
 ```
+
+### Random
+```{r}
+randomGuesses <- function(currentData, ticks, startX = 1, startY = 1)
+{
+  bestX = round(runif(1, min = min(currentData$X), max = max(currentData$X)))
+  bestY = round(runif(1, min = min(currentData$Y), max = max(currentData$Y)))
+  return (c(bestX, bestY))
+}
+```
+
 
 ### Hill Climbing
 ```{r}
@@ -568,13 +630,19 @@ simulatedAnnealing <- function(currentData, ticks, startX = 1, startY = 1, cooli
 
 ### Workshop
 ```{r}
-hillClimbOutput = assembleData(17, 17, hillClimb, ticksPerTime = 100)
+randomOutput = assembleData(timeWorld = timeWorld, optimizeFunction = randomGuesses, ticksPerTime = 1)
+cat("Random guesses were, on average, off by", evaluate(randomOutput), "units.\n")
+visualizeFunction(randomOutput)
+```
+
+```{r}
+hillClimbOutput = assembleData(timeWorld = timeWorld, optimizeFunction = hillClimb, ticksPerTime = 10)
 cat("Hill climbing was, on average, off by", evaluate(hillClimbOutput), "units.\n")
 visualizeFunction(hillClimbOutput)
 ```
 
 ```{r}
-saOutput = assembleData(17, 17, simulatedAnnealing, ticksPerTime = 10, coolingFunction = decayCoolingFunction, temperatureTickAmount = 0.75)
+saOutput = assembleData(timeWorld = timeWorld, optimizeFunction = simulatedAnnealing, ticksPerTime = 100, coolingFunction = decayCoolingFunction, temperatureTickAmount = 0.05)
 cat("Simulated Annealing was, on average, off by", evaluate(saOutput), "units.\n")
 visualizeFunction(saOutput)
 ```
