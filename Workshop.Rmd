@@ -483,6 +483,74 @@ simulatedAnnealing <- function(currentData, ticks, startX = 1, startY = 1, cooli
 }
 ```
 
+### Genetic Algorithm
+```{r}
+dtob <- function(number, bits = 4)
+{
+  return (as.integer(rev(intToBits(number)[1:bits])))
+}
+btod <- function(bits)
+{
+  return (sum(bits * 2^seq(0, length(bits) - 1, 1)))
+}
+getChildren <- function(parents)
+{
+  splitPosition = floor(runif(1, min = 0, max = length(parents[[1]])))
+  child2 = c(parents[[2]][1:splitPosition], parents[[1]][(splitPosition+1):length(parents[[1]])])
+  child1 = c(parents[[1]][1:splitPosition], parents[[2]][(splitPosition+1):length(parents[[2]])])
+  return (list(child1, child2))
+}
+mutate <- function(population, mutationRate = 0.05)
+{
+  for (i in 1:length(population))
+  {
+    for (j in 1:length(population[[i]]))
+    {
+      if (runif(1, 0, 1) < mutationRate)
+      {
+        population[[i]][j] = 1 - population[[i]][j]
+      }
+    }
+  }
+  return (population)
+}
+getNextParents <- function(population, currentData, xBits, yBits, xMin, yMin)
+{
+  values = c()
+  for (i in 1:length(population))
+  {
+    values[i] = currentData[
+      currentData$X == btod(population[[i]][1:xBits])+xMin & 
+      currentData$Y == btod(population[[i]][(xBits+1):(xBits+yBits)])+yMin,]$Value
+  }
+  return(rev(population[order(values)])[1:2])
+}
+
+geneticAlgorithm <- function(currentData, ticks, startX = 1, startY = 1, mutationRate = 0.05)
+{
+  xMin = min(currentData$X)
+  yMin = min(currentData$Y)
+  xRange = max(currentData$X) - xMin + 1
+  yRange = max(currentData$Y) - yMin + 1
+  xBits = ceiling(log2(xRange))
+  yBits = ceiling(log2(yRange))
+  
+  randomParent = c(sample(c(0, 1), xBits, replace=TRUE), sample(c(0, 1), yBits, replace=TRUE))
+  baseParent = c(dtob(startX - xMin, xBits), dtob(startY - yMin, yBits))
+  parents = list(randomParent, baseParent)
+  
+  for (i in 1:ticks)
+  {
+    children = getChildren(parents)
+    population = c(mutate(children), mutate(parents))
+    parents = getNextParents(population, currentData, xBits, yBits, xMin, yMin)
+  }
+  
+  return (c(btod(parents[[1]][1:xBits])+xMin, btod(parents[[1]][(xBits+1):(xBits+yBits)])))
+}
+
+```
+
 
 ### Workshop
 ```{r}
@@ -501,4 +569,10 @@ visualizeFunction(hillClimbOutput)
 saOutput = assembleData(timeWorld = timeWorld, optimizeFunction = simulatedAnnealing, ticksPerTime = 100, coolingFunction = decayCoolingFunction, temperatureTickAmount = 0.05)
 cat("Simulated Annealing was, on average, off by", evaluate(saOutput), "units.\n")
 visualizeFunction(saOutput)
+```
+
+```{r}
+gaOutput = assembleData(timeWorld = timeWorld, optimizeFunction = geneticAlgorithm, ticksPerTime = 10, mutationRate = 0.05)
+cat("Genetic Algorithm was, on average, off by", evaluate(gaOutput), "units.\n")
+visualizeFunction(gaOutput)
 ```
