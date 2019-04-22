@@ -312,6 +312,7 @@ All functions have a standardized signature:
  
 ### Evaluation
 ```{r}
+# Returns the average distance between guessed and optimal points
 evaluate <- function (allData, fromtime = 25, untiltime = 50)
 {
   if (is.null(allData$optimalPoints) || is.null(allData$guessedPoints))
@@ -324,8 +325,8 @@ evaluate <- function (allData, fromtime = 25, untiltime = 50)
   fromtime = max(min(fromtime, max(expected$Time)), min(expected$Time))
   untiltime = max(min(untiltime, max(expected$Time)), min(expected$Time))
   
-  xLength = max(allData$worldData$X) - min(allData$worldData$X)
-  yLength = max(allData$worldData$Y) - min(allData$worldData$Y)
+  xLength = max(allData$worldData$X) - min(allData$worldData$X) + 1
+  yLength = max(allData$worldData$Y) - min(allData$worldData$Y) + 1
   
   averageDistance = 0
   for (t in fromtime:untiltime)
@@ -343,6 +344,50 @@ evaluate <- function (allData, fromtime = 25, untiltime = 50)
   }
   averageDistance = averageDistance / (untiltime - fromtime + 1)
   return (averageDistance)
+}
+
+# Returns accuracy as a percent of maximum possible distance
+evaluatePercent <- function (allData, fromtime = 25, untiltime = 50)
+{
+  avgDistance = evaluate(allData, fromtime, untiltime)
+  
+  xLength = max(allData$worldData$X) - min(allData$worldData$X) + 1
+  yLength = max(allData$worldData$Y) - min(allData$worldData$Y) + 1
+  
+  percent = avgDistance / sqrt((xLength / 2) ^ 2 + (yLength / 2) ^ 2)
+  percent = 1 - percent
+  
+  return (percent)
+}
+
+# Returns percent of measured timesteps where the guessed point is the same as the optimal point
+evaluateSyncCount <- function(allData, fromtime = 25, untiltime = 50)
+{
+  if (is.null(allData$optimalPoints) || is.null(allData$guessedPoints))
+  {
+    stop("Incomplete data for evaluate; allData is missing either optimalPoints or guessedPoints")
+  }
+  expected = allData$optimalPoints
+  actual = allData$guessedPoints
+  
+  fromtime = max(min(fromtime, max(expected$Time)), min(expected$Time))
+  untiltime = max(min(untiltime, max(expected$Time)), min(expected$Time))
+  
+  syncCount = 0
+  for (t in fromtime:untiltime)
+  {
+    xGuess = actual[actual$Time == t,]$GuessedX
+    yGuess = actual[actual$Time == t,]$GuessedY
+    xOptimal = expected[expected$Time == t,]$OptimalX
+    yOptimal = expected[expected$Time == t,]$OptimalY
+    
+    if (xGuess == xOptimal && yGuess == yOptimal)
+    {
+      syncCount = syncCount + 1
+    }
+  }
+  syncCount = syncCount / (untiltime - fromtime + 1)
+  return (syncCount)
 }
 ```
 
@@ -556,23 +601,31 @@ geneticAlgorithm <- function(currentData, ticks, startX = 1, startY = 1, mutatio
 ```{r}
 randomOutput = assembleData(timeWorld = timeWorld, optimizeFunction = randomGuesses, ticksPerTime = 1)
 cat("Random guesses were, on average, off by", evaluate(randomOutput), "units.\n")
-visualizeFunction(randomOutput)
+sprintf("This is %.2f percent accurate.", evaluatePercent(randomOutput) * 100)
+sprintf("This synced with optimal output %.2f percent of the time.", evaluateSyncCount(randomOutput) * 100)
+# visualizeFunction(randomOutput)
 ```
 
 ```{r}
 hillClimbOutput = assembleData(timeWorld = timeWorld, optimizeFunction = hillClimb, ticksPerTime = 10)
 cat("Hill climbing was, on average, off by", evaluate(hillClimbOutput), "units.\n")
-visualizeFunction(hillClimbOutput)
+sprintf("This is %.2f percent accurate.", evaluatePercent(hillClimbOutput) * 100)
+sprintf("This synced with optimal output %.2f percent of the time.", evaluateSyncCount(hillClimbOutput) * 100)
+# visualizeFunction(hillClimbOutput)
 ```
 
 ```{r}
 saOutput = assembleData(timeWorld = timeWorld, optimizeFunction = simulatedAnnealing, ticksPerTime = 100, coolingFunction = decayCoolingFunction, temperatureTickAmount = 0.05)
 cat("Simulated Annealing was, on average, off by", evaluate(saOutput), "units.\n")
-visualizeFunction(saOutput)
+sprintf("This is %.2f percent accurate.", evaluatePercent(saOutput) * 100)
+sprintf("This synced with optimal output %.2f percent of the time.", evaluateSyncCount(saOutput) * 100)
+# visualizeFunction(saOutput)
 ```
 
 ```{r}
 gaOutput = assembleData(timeWorld = timeWorld, optimizeFunction = geneticAlgorithm, ticksPerTime = 10, mutationRate = 0.05)
 cat("Genetic Algorithm was, on average, off by", evaluate(gaOutput), "units.\n")
-visualizeFunction(gaOutput)
+sprintf("This is %.2f percent accurate.", evaluatePercent(gaOutput) * 100)
+sprintf("This synced with optimal output %.2f percent of the time.", evaluateSyncCount(gaOutput) * 100)
+# visualizeFunction(gaOutput)
 ```
