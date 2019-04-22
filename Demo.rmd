@@ -1,0 +1,212 @@
+---
+title: "Dancing Landscape Demo"
+author: "Joseph Abolt"
+date: "April 6, 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Load Libraries
+```{r}
+# install.packages('knitr', repos = c('http://rforge.net', 'http://cran.rstudio.org'), type = 'source')
+# install.packages("ggplot2")
+# install.packages("gganimate")
+# install.packages("gifski")
+# install.packages("png")
+# install.packages("transformr")
+library("knitr")
+library("ggplot2")
+library("gganimate")
+library("gifski")
+library("png")
+library("transformr")
+```
+
+## Dancing Landscape
+
+* Landscape: term for any multidimensional surface used for optimization
+* Dancing Landscape: a landscape that moves over time
+
+### Sources of Dancing Landscapes
+
+* Complex behavior
+    * When factors that create landscapes are interdependent
+    * When factors that create landscapes change over time
+
+### Examples of Dancing Landscapes
+
+* The stock market
+* Customer demand by product tag over time
+
+## Demonstration
+``` {r}
+f2D <- function(x, t) {
+  return (cos(x) * sin(t * pi) - (abs(x)/10) + x/20)
+}
+
+par(mfrow=c(3, 3))
+plot(f2D(seq(-10, 10, 0.1), 0.00), type="l")
+plot(f2D(seq(-10, 10, 0.1), 0.17), type="l")
+plot(f2D(seq(-10, 10, 0.1), 0.33), type="l")
+plot(f2D(seq(-10, 10, 0.1), 0.50), type="l")
+plot(f2D(seq(-10, 10, 0.1), 0.67), type="l")
+plot(f2D(seq(-10, 10, 0.1), 0.83), type="l")
+plot(f2D(seq(-10, 10, 0.1), 1.00), type="l")
+plot(f2D(seq(-10, 10, 0.1), 1.17), type="l")
+plot(f2D(seq(-10, 10, 0.1), 1.33), type="l")
+par(mfrow=c(1, 1))
+```
+
+## Assemble Sample dataframe
+```{r}
+constructData2D <- function (func, xMin, xMax, precision, timeMin, timeMax)
+{
+  # Interval is bounded by gganimate - this just works, do not ask questions
+  timeInterval = ((timeMax - timeMin) / 50) + 0.001
+  
+  data <- data.frame(X=0, Y=0, Time=0)
+  i = 1
+  for (t in seq(timeMin, timeMax, timeInterval))
+  {
+    for (x in seq(xMin, xMax, precision))
+    {
+      data[i,]$X = x
+      data[i,]$Y = func(x, t)
+      data[i,]$Time = t
+      i = i + 1
+    }
+  }
+  
+  return (data)
+}
+
+timeData = constructData2D(f2D, -10, 10, 0.2, 0, 5)
+
+## Output the dataframe and the graph it represents
+str(timeData)
+ggplot(timeData, aes(X, Y, group=Time)) +
+  geom_path()
+```
+
+## Animation of function over time
+```{r}
+visualizeFunction <- function(dataframe)
+{
+  animation = ggplot(dataframe, aes(X, Y, group=Time)) +
+    geom_path() +
+    transition_states(Time, transition_length=1, state_length=1, wrap=F) +
+    labs(title = "Time: {closest_state}") +
+    enter_fade() + 
+    exit_fade()
+  
+  if (!is.null(dataframe$OptimalX))
+  {
+    animation = animation +
+      geom_point(x=dataframe$OptimalX, y=dataframe$OptimalY, colour="hotpink", size=4)
+  }
+  
+  animation
+}
+
+visualizeFunction(timeData)
+```
+
+## Setup Hill Climbing
+The function updates the OptimalX and OptimalY columns of a dataframe containing X, Y, and Time to include the best results from hill climbing optimization function. It attempts to find the maxima.
+
+ticksPerUnitTime controls how fast the hill climbing runs compared to the function. For every increase in the time value of 1.0, the hill climbing will update its value ticksPerUnitTime times.
+
+costFunction is the function being optimized, of the form y = costFunction(x, time).
+
+At time = 0, the algorithm will use a single random guess. That is, do not expect the first value to be a good one. Setting startX can control this instead of a random value.
+
+windowSize controls how far the hill climb algorithm can guess for each guess. It will look up to (windowSize / 2) left or right from its current best
+```{r}
+hillClimb <- function(timeDataFrame, ticksPerUnitTime, costFunction, startX = NULL, windowSize = 1)
+{
+  # Setup variables
+  currentTime = min(timeDataFrame$Time)
+  currentTick = 1
+  currentSubset = timeDataFrame[timeDataFrame$Time == currentTime,]
+  bestX = startX
+  if (is.null(bestX))
+  {
+    bestX = runif(1, min(currentSubset$X), max(currentSubset$X))
+  }
+  bestY = costFunction(bestX, currentTime)
+  width = windowSize / 2
+  getOption <- function() { 
+    return (runif(1, 
+              max(bestX - width, min(currentSubset$X)), 
+              min(bestX + width, max(currentSubset$X))))
+  }
+
+  # Record optimal x and y
+  timeDataFrame[timeDataFrame$Time == currentTime,]$OptimalX = rep(bestX, nrow(currentSubset))
+  timeDataFrame[timeDataFrame$Time == currentTime,]$OptimalY = rep(bestY, nrow(currentSubset))
+
+  # Iterate through time
+  nextSubset = timeDataFrame[timeDataFrame$Time > currentTime,]
+  while (nrow(nextSubset) > 0)
+  {
+    # Calculate number of hill climb ticks (guesses) to do
+    nextTime = min(nextSubset$Time)
+    iterations = floor(nextTime * ticksPerUnitTime) - currentTick
+    
+    # Update variables
+    currentTime = nextTime
+    currentSubset = timeDataFrame[timeDataFrame$Time == currentTime,]
+    bestY = costFunction(bestX, currentTime)
+
+    # Actually do hill climbing
+    if (iterations >= 1)
+    for (i in 1:iterations)
+    {
+      currentTick = currentTick + 1
+      testX = getOption()
+      testY = costFunction(testX, currentTime)
+      if (testY > bestY)
+      {
+        bestX = testX
+        bestY = testY
+      }
+    }
+    
+    # Record new optimal x and y
+    timeDataFrame$OptimalX[timeDataFrame$Time == currentTime] = rep(bestX, nrow(currentSubset))
+    timeDataFrame$OptimalY[timeDataFrame$Time == currentTime] = rep(bestY, nrow(currentSubset))
+    
+    # Load next time subset
+    nextSubset = timeDataFrame[timeDataFrame$Time > currentTime,]
+  }
+  
+  return (timeDataFrame)
+}
+```
+
+## Run and Visualize Hill Climbing
+```{r}
+# Approximately 1 guess per tick
+timeData = hillClimb(timeData, 9, f2D, startX = -10)
+visualizeFunction(timeData)
+```
+
+```{r}
+# Approximately 0.3 guesses per tick
+timeData = hillClimb(timeData, 3, f2D, startX = -10)
+visualizeFunction(timeData)
+```
+
+```{r}
+# Approximately 3 guesses per tick
+timeData = hillClimb(timeData, 28, f2D, startX = -10)
+visualizeFunction(timeData)
+```
+
+## Takeaways
+ * Optimization is "easy" when optimzer speed > function change
+ * Optimization is difficult when optimizer speed < function change
+ 
