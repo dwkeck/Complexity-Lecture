@@ -596,36 +596,160 @@ geneticAlgorithm <- function(currentData, ticks, startX = 1, startY = 1, mutatio
 
 ```
 
+### Particle Swarm Optimization
+```{r}
+particleSwarm <- function(currentData, ticks, startX = 1, startY = 1, particleCount = 3, inertia = 0.9, personalAcceleration = 0.75, globalAcceleration = 0.75)
+{
+  particles <- data.frame(X = 0, Y = 0, Vx = 0, Vy = 0, BestSeenX = 0, BestSeenY = 0)
+  globalBestX = 0
+  globalBestY = 0
+  globalBestValue = -Inf
+  
+  xRange = max(currentData$X) - min(currentData$X) + 1
+  yRange = max(currentData$Y) - min(currentData$Y) + 1
+  
+  for (i in 1:particleCount)
+  {
+    particles[i,]$X = floor(runif(1, min = min(currentData$X), max = max(currentData$X)))
+    particles[i,]$Y = floor(runif(1, min = min(currentData$Y), max = max(currentData$Y)))
+    particles[i,]$Vx = runif(1, -2, 2)
+    particles[i,]$Vy = runif(1, -2, 2)
+    particles[i,]$BestSeenX = particles[i,]$X
+    particles[i,]$BestSeenY = particles[i,]$Y
+    score = currentData[currentData$X == particles[i,]$X & currentData$Y == particles[i,]$Y,]$Value
+    if (score > globalBestValue)
+    {
+      globalBestX = particles[i,]$X
+      globalBestY = particles[i,]$Y
+      globalBestValue = score
+    }
+  }
 
-### Workshop
+  # Loop to advance the particles
+  for (t in 1:ticks)
+  {
+    # Update variables
+    updated = c() # Used to streamline updating the global best
+    for (i in 1:particleCount)
+    {
+      # Update position
+      particles[i,]$X = round(particles[i,]$X + particles[i,]$Vx)
+      particles[i,]$Y = round(particles[i,]$Y + particles[i,]$Vy)
+      
+      # Wrap position on both axes
+      while (particles[i,]$X < min(currentData$X))
+      {
+        particles[i,]$X = particles[i,]$X + xRange
+      }
+      while (particles[i,]$X > max(currentData$X))
+      {
+        particles[i,]$X = particles[i,]$X - xRange
+      }
+      
+      while (particles[i,]$Y < min(currentData$Y))
+      {
+        particles[i,]$Y = particles[i,]$Y + yRange
+      }
+      while (particles[i,]$Y > max(currentData$Y))
+      {
+        particles[i,]$Y = particles[i,]$Y - yRange
+      }
+
+      # Update velocity
+      particles[i,]$Vx = inertia * particles[i,]$Vx +
+        personalAcceleration * (particles[i,]$BestSeenX - particles[i,]$X) + 
+        globalAcceleration * (globalBestX - particles[i,]$X)
+      particles[i,]$Vy = inertia * particles[i,]$Vy +
+        personalAcceleration * (particles[i,]$BestSeenY - particles[i,]$Y) + 
+        globalAcceleration * (globalBestY - particles[i,]$Y)
+      
+      # Update personal best
+      prevScore = currentData[currentData$X == particles[i,]$BestSeenX & currentData$Y == particles[i,]$BestSeenY,]$Value
+      currScore = currentData[currentData$X == particles[i,]$X & currentData$Y == particles[i,]$Y,]$Value
+      updated[i] = FALSE
+      if (currScore > prevScore)
+      {
+        updated[i] = TRUE
+        particles[i,]$BestSeenX = particles[i,]$X
+        particles[i,]$BestSeenY = particles[i,]$Y
+      }
+    }
+
+    updatedParticles = particles[updated,]
+
+    # Update global best
+    if (sum(updated) > 0)
+    {
+      for (i in 1:nrow(updatedParticles))
+      {
+        score = currentData[currentData$X == updatedParticles[i,]$BestSeenX & currentData$Y == updatedParticles[i,]$BestSeenY,]$Value
+  
+        if (score > globalBestValue)
+        {
+          globalBestValue = score
+          globalBestX = updatedParticles[i,]$BestSeenX
+          globalBestY = updatedParticles[i,]$BestSeenY
+        }
+      }
+    }
+  }
+  
+  return (c(globalBestX, globalBestY))
+}
+```
+
+
+# Workshop
+You job is to optimize as much as possible on the function provided. 
+The following code chunk is provided as an example for how to use these functions.
+Remember to provide additional parameters as necessary.
+It is advised to not visualize the function unless strictly necessary - this can take over a minute. It will provide insight into how to tune your parameters, but may not be worth it for each iteration.
+
+Function           | Additional parameters
+-------------------|----------------------
+randomGuesses      | none
+hillClimb          | none
+simulatedAnnealing | **coolingFunction**, **temperatureTickAmount**
+geneticAlgorithm   | mutationRate (0.05)
+particleSwarm      | particleCount (3), inertia (0.75), personalAcceleration (0.75), globalAcceleration (0.75)
+
+Bold parameters are required. Default values appear in parentheses after the corresponding parameter.
 ```{r}
 randomOutput = assembleData(timeWorld = timeWorld, optimizeFunction = randomGuesses, ticksPerTime = 1)
 cat("Random guesses were, on average, off by", evaluate(randomOutput), "units.\n")
-sprintf("This is %.2f percent accurate.", evaluatePercent(randomOutput) * 100)
-sprintf("This synced with optimal output %.2f percent of the time.", evaluateSyncCount(randomOutput) * 100)
+cat(sprintf("This is %.2f percent accurate.", evaluatePercent(randomOutput) * 100), "\n")
+cat(sprintf("This synced with optimal output %.2f percent of the time.", evaluateSyncCount(randomOutput) * 100), "\n")
 # visualizeFunction(randomOutput)
 ```
 
 ```{r}
 hillClimbOutput = assembleData(timeWorld = timeWorld, optimizeFunction = hillClimb, ticksPerTime = 10)
 cat("Hill climbing was, on average, off by", evaluate(hillClimbOutput), "units.\n")
-sprintf("This is %.2f percent accurate.", evaluatePercent(hillClimbOutput) * 100)
-sprintf("This synced with optimal output %.2f percent of the time.", evaluateSyncCount(hillClimbOutput) * 100)
+cat(sprintf("This is %.2f percent accurate.", evaluatePercent(hillClimbOutput) * 100), "\n")
+cat(sprintf("This synced with optimal output %.2f percent of the time.", evaluateSyncCount(hillClimbOutput) * 100), "\n")
 # visualizeFunction(hillClimbOutput)
 ```
 
 ```{r}
 saOutput = assembleData(timeWorld = timeWorld, optimizeFunction = simulatedAnnealing, ticksPerTime = 100, coolingFunction = decayCoolingFunction, temperatureTickAmount = 0.05)
 cat("Simulated Annealing was, on average, off by", evaluate(saOutput), "units.\n")
-sprintf("This is %.2f percent accurate.", evaluatePercent(saOutput) * 100)
-sprintf("This synced with optimal output %.2f percent of the time.", evaluateSyncCount(saOutput) * 100)
+cat(sprintf("This is %.2f percent accurate.", evaluatePercent(saOutput) * 100), "\n")
+cat(sprintf("This synced with optimal output %.2f percent of the time.", evaluateSyncCount(saOutput) * 100), "\n")
 # visualizeFunction(saOutput)
 ```
 
 ```{r}
-gaOutput = assembleData(timeWorld = timeWorld, optimizeFunction = geneticAlgorithm, ticksPerTime = 10, mutationRate = 0.05)
+gaOutput = assembleData(timeWorld = timeWorld, optimizeFunction = geneticAlgorithm, ticksPerTime = 50, mutationRate = 0.05)
 cat("Genetic Algorithm was, on average, off by", evaluate(gaOutput), "units.\n")
-sprintf("This is %.2f percent accurate.", evaluatePercent(gaOutput) * 100)
-sprintf("This synced with optimal output %.2f percent of the time.", evaluateSyncCount(gaOutput) * 100)
+cat(sprintf("This is %.2f percent accurate.", evaluatePercent(gaOutput) * 100), "\n")
+cat(sprintf("This synced with optimal output %.2f percent of the time.", evaluateSyncCount(gaOutput) * 100), "\n")
 # visualizeFunction(gaOutput)
+```
+
+```{r}
+psoOutput = assembleData(timeWorld = timeWorld, optimizeFunction = particleSwarm, ticksPerTime = 50, particleCount = 3, inertia = 0.9, personalAcceleration = 0.75, globalAcceleration = 0.75)
+cat("Particle Swarm Optimization was, on average, off by", evaluate(psoOutput), "units.\n")
+cat(sprintf("This is %.2f percent accurate.", evaluatePercent(psoOutput) * 100), "\n")
+cat(sprintf("This synced with optimal output %.2f percent of the time.", evaluateSyncCount(psoOutput) * 100), "\n")
+# visualizeFunction(psoOutput)
 ```
