@@ -209,8 +209,8 @@ getGuesses <- function(timeWorld, optimizeFunction, ticksPerTime = 1, ...)
   return (guessData)
 }
 
-# Horrible ugly monster function to encapsulate a bunch of work.
-# Builds a world (or reuses the one passed in a timeWorld). Uses that to obtain optimal points
+# Encapsulate the work necessary to build a world into a single function.
+# Builds a world (or reuses the one passed in as timeWorld). Uses that to obtain optimal points
 # (if includeOptimalPoints is true), as well as run an optimization function (if optimizeFunction is not
 # null). Returns an object with three dataframes (or NULLs) - worldData, optimalPoints, and guessedPoints.
 assembleData <- function (width = 17, height = 17, iterations = 50, timeWorld = NULL, optimizeFunction = NULL, ticksPerTime = 1, includeOptimalPoints = T, ...)
@@ -248,6 +248,11 @@ finalData = assembleData(timeWorld = timeWorld)
 
 ### Prepare animated visualizer
 ```{r}
+# Given an object, such as the output of assembleData(), visualizes the output
+# Displays the height of each point using a raster (legend at right), animated over time.
+# If optimalPoints are included, they are graphed at each time step as a pink dot.
+# If guessedPoints are included, they are graphed at each time step as a green dot.
+# Be aware that this function may take a while (a few minutes) to run - animations are slow work.
 visualizeFunction <- function(allData, fromtime = 25, untiltime = 50)
 {
   fromtime = max(min(fromtime, max(allData$worldData$Time)), min(allData$worldData$Time))
@@ -393,6 +398,7 @@ evaluateSyncCount <- function(allData, fromtime = 25, untiltime = 50)
 
 ### Random
 ```{r}
+# Randomly selects a point in bounds and returns it.
 randomGuesses <- function(currentData, ticks, startX = 1, startY = 1)
 {
   bestX = round(runif(1, min = min(currentData$X), max = max(currentData$X)))
@@ -404,6 +410,10 @@ randomGuesses <- function(currentData, ticks, startX = 1, startY = 1)
 
 ### Hill Climbing
 ```{r}
+# Starting from startX and startY, hillClimb will move orthogonally (left, right, up, or down) to
+# its best neighbor (or stay where it is if there is no better option). It will repeat this ticks
+# number of times.
+# Guesses: ticks
 hillClimb <- function(currentData, ticks, startX = 1, startY = 1)
 {
   bestX = startX
@@ -459,6 +469,11 @@ linearCoolingFunction <- function (x) { return(1 - 0.1 * x) }
 powerCoolingFunction <- function (x) { return(0.75 ^ x) }
 decayCoolingFunction <- function (x) { return(1 / (x + 1)) }
 
+# Simulated annealing works very similarly to hillClimb(), save that simulated annealing has a chance to accept a bad step.
+# This allows it to escape local optima. The coolingFunction, given a positive real number, returns a percent likelihood to
+# accept a swap even if it is bad. The temperatureTickAmount determines how much to increment the input to coolingFunction
+# each time it is called.
+# Guesses: ticks
 simulatedAnnealing <- function(currentData, ticks, startX = 1, startY = 1, coolingFunction = NULL, temperatureTickAmount = NULL)
 {
   if (is.null(coolingFunction))
@@ -530,6 +545,7 @@ simulatedAnnealing <- function(currentData, ticks, startX = 1, startY = 1, cooli
 
 ### Genetic Algorithm
 ```{r}
+# Convert binary vectors to decimal integers, and vice versa
 dtob <- function(number, bits = 4)
 {
   return (as.integer(rev(intToBits(number)[1:bits])))
@@ -538,6 +554,8 @@ btod <- function(bits)
 {
   return (sum(bits * 2^seq(0, length(bits) - 1, 1)))
 }
+
+# Given a list of two parents (binary vectors), returns a list of two children (also binary vectors)
 getChildren <- function(parents)
 {
   splitPosition = floor(runif(1, min = 0, max = length(parents[[1]])))
@@ -545,6 +563,8 @@ getChildren <- function(parents)
   child1 = c(parents[[1]][1:splitPosition], parents[[2]][(splitPosition+1):length(parents[[2]])])
   return (list(child1, child2))
 }
+
+# For each gene in each binary vector in the population list, with mutationRate chance, toggles the gene.
 mutate <- function(population, mutationRate = 0.05)
 {
   for (i in 1:length(population))
@@ -559,6 +579,8 @@ mutate <- function(population, mutationRate = 0.05)
   }
   return (population)
 }
+
+# Given the current population, computes the best two to be the next generation's parents.
 getNextParents <- function(population, currentData, xBits, yBits, xMin, yMin)
 {
   values = c()
@@ -571,6 +593,8 @@ getNextParents <- function(population, currentData, xBits, yBits, xMin, yMin)
   return(rev(population[order(values)])[1:2])
 }
 
+# Uses a genetic algorithm to make iterative guesses. Always uses a population size of 4 (2 parents, 2 children).
+# Guesses: 4 * ticks - 1
 geneticAlgorithm <- function(currentData, ticks, startX = 1, startY = 1, mutationRate = 0.05)
 {
   xMin = min(currentData$X)
@@ -582,7 +606,7 @@ geneticAlgorithm <- function(currentData, ticks, startX = 1, startY = 1, mutatio
   
   randomParent = c(sample(c(0, 1), xBits, replace=TRUE), sample(c(0, 1), yBits, replace=TRUE))
   baseParent = c(dtob(startX - xMin, xBits), dtob(startY - yMin, yBits))
-  parents = list(randomParent, baseParent)
+  parents = list(baseParent, randomParent)
   
   for (i in 1:ticks)
   {
@@ -598,6 +622,10 @@ geneticAlgorithm <- function(currentData, ticks, startX = 1, startY = 1, mutatio
 
 ### Particle Swarm Optimization
 ```{r}
+# Simulates a swarm of particles, each of which has inertia, and accelerates toward the best point it has seen
+# and the best point that any particle has seen. Accounts for the world wrapping on both axes.
+# Unlike other functions, completely disregards startX and startY.
+# Guesses: particleCount * ticks
 particleSwarm <- function(currentData, ticks, startX = 1, startY = 1, particleCount = 3, inertia = 0.9, personalAcceleration = 0.75, globalAcceleration = 0.75)
 {
   particles <- data.frame(X = 0, Y = 0, Vx = 0, Vy = 0, BestSeenX = 0, BestSeenY = 0)
@@ -700,7 +728,7 @@ particleSwarm <- function(currentData, ticks, startX = 1, startY = 1, particleCo
 
 
 # Workshop
-You job is to optimize as much as possible on the function provided. 
+You job is to optimize as much as possible on the function provided. You should definitely be able to get above 70%. Try to get above 90%.
 The following code chunk is provided as an example for how to use these functions.
 Remember to provide additional parameters as necessary.
 It is advised to not visualize the function unless strictly necessary - this can take over a minute. It will provide insight into how to tune your parameters, but may not be worth it for each iteration.
@@ -722,34 +750,5 @@ cat(sprintf("This synced with optimal output %.2f percent of the time.", evaluat
 # visualizeFunction(randomOutput)
 ```
 
-```{r}
-hillClimbOutput = assembleData(timeWorld = timeWorld, optimizeFunction = hillClimb, ticksPerTime = 10)
-cat("Hill climbing was, on average, off by", evaluate(hillClimbOutput), "units.\n")
-cat(sprintf("This is %.2f percent accurate.", evaluatePercent(hillClimbOutput) * 100), "\n")
-cat(sprintf("This synced with optimal output %.2f percent of the time.", evaluateSyncCount(hillClimbOutput) * 100), "\n")
-# visualizeFunction(hillClimbOutput)
-```
-
-```{r}
-saOutput = assembleData(timeWorld = timeWorld, optimizeFunction = simulatedAnnealing, ticksPerTime = 100, coolingFunction = decayCoolingFunction, temperatureTickAmount = 0.05)
-cat("Simulated Annealing was, on average, off by", evaluate(saOutput), "units.\n")
-cat(sprintf("This is %.2f percent accurate.", evaluatePercent(saOutput) * 100), "\n")
-cat(sprintf("This synced with optimal output %.2f percent of the time.", evaluateSyncCount(saOutput) * 100), "\n")
-# visualizeFunction(saOutput)
-```
-
-```{r}
-gaOutput = assembleData(timeWorld = timeWorld, optimizeFunction = geneticAlgorithm, ticksPerTime = 50, mutationRate = 0.05)
-cat("Genetic Algorithm was, on average, off by", evaluate(gaOutput), "units.\n")
-cat(sprintf("This is %.2f percent accurate.", evaluatePercent(gaOutput) * 100), "\n")
-cat(sprintf("This synced with optimal output %.2f percent of the time.", evaluateSyncCount(gaOutput) * 100), "\n")
-# visualizeFunction(gaOutput)
-```
-
-```{r}
-psoOutput = assembleData(timeWorld = timeWorld, optimizeFunction = particleSwarm, ticksPerTime = 50, particleCount = 3, inertia = 0.9, personalAcceleration = 0.75, globalAcceleration = 0.75)
-cat("Particle Swarm Optimization was, on average, off by", evaluate(psoOutput), "units.\n")
-cat(sprintf("This is %.2f percent accurate.", evaluatePercent(psoOutput) * 100), "\n")
-cat(sprintf("This synced with optimal output %.2f percent of the time.", evaluateSyncCount(psoOutput) * 100), "\n")
-# visualizeFunction(psoOutput)
-```
+#### Add more attempts here
+"Try again. Fail again. Fail better." - Samuel Beckett
